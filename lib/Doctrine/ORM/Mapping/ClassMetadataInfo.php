@@ -23,6 +23,7 @@ use BadMethodCallException;
 use InvalidArgumentException;
 use RuntimeException;
 use Doctrine\DBAL\Types\Type;
+use Doctrine\DBAL\Platforms\AbstractPlatform;
 use ReflectionClass;
 use Doctrine\Common\Persistence\Mapping\ClassMetadata;
 use Doctrine\Common\ClassLoader;
@@ -1805,6 +1806,16 @@ class ClassMetadataInfo implements ClassMetadata
     }
 
     /**
+     * Gets primary table's schema name.
+     *
+     * @return string|null
+     */
+    public function getSchemaName()
+    {
+        return isset($this->table['schema']) ? $this->table['schema'] : null;
+    }
+
+    /**
      * Gets the table name to use for temporary identifier tables of this class.
      *
      * @return string
@@ -2012,6 +2023,10 @@ class ClassMetadataInfo implements ClassMetadata
             }
 
             $this->table['name'] = $table['name'];
+        }
+
+        if (isset($table['schema'])) {
+            $this->table['schema'] = $table['schema'];
         }
 
         if (isset($table['indexes'])) {
@@ -2820,5 +2835,139 @@ class ClassMetadataInfo implements ClassMetadata
             }
         }
         return $relations;
+    }
+
+    /**
+     * @param   string $className
+     * @return  string
+     */
+    public function fullyQualifiedClassName($className)
+    {
+        if ($className !== null && strpos($className, '\\') === false && strlen($this->namespace) > 0) {
+            return $this->namespace . '\\' . $className;
+        }
+
+        return $className;
+    }
+
+    /**
+     * @param string $name
+     *
+     * @return mixed
+     */
+    public function getMetadataValue($name) {
+
+        if (isset($this->$name)) {
+            return $this->$name;
+        }
+
+        return null;
+    }
+
+    /**
+     * Map Embedded Class
+     *
+     * @param array $mapping
+     * @throws MappingException
+     * @return void
+     */
+    public function mapEmbedded(array $mapping)
+    {
+        if ($this->isEmbeddedClass) {
+            throw MappingException::noEmbeddablesInEmbeddable($this->name);
+        }
+
+        $this->assertFieldNotMapped($mapping['fieldName']);
+
+        $this->embeddedClasses[$mapping['fieldName']] = array(
+            'class' => $this->fullyQualifiedClassName($mapping['class']),
+            'columnPrefix' => $mapping['columnPrefix'],
+        );
+    }
+
+    /**
+     * Inline the embeddable class
+     *
+     * @param string $property
+     * @param ClassMetadataInfo $embeddable
+     */
+    public function inlineEmbeddable($property, ClassMetadataInfo $embeddable)
+    {
+        foreach ($embeddable->fieldMappings as $fieldMapping) {
+            $fieldMapping['declaredField'] = $property;
+            $fieldMapping['originalField'] = $fieldMapping['fieldName'];
+            $fieldMapping['fieldName'] = $property . "." . $fieldMapping['fieldName'];
+
+            if (! empty($this->embeddedClasses[$property]['columnPrefix'])) {
+                $fieldMapping['columnName'] = $this->embeddedClasses[$property]['columnPrefix'] . $fieldMapping['columnName'];
+            } elseif ($this->embeddedClasses[$property]['columnPrefix'] !== false) {
+                $fieldMapping['columnName'] = $this->namingStrategy
+                    ->embeddedFieldToColumnName(
+                        $property,
+                        $fieldMapping['columnName'],
+                        $this->reflClass->name,
+                        $embeddable->reflClass->name
+                    );
+            }
+
+            $this->mapField($fieldMapping);
+        }
+    }
+
+    /**
+     * @param string $fieldName
+     * @throws MappingException
+     */
+    private function assertFieldNotMapped($fieldName)
+    {
+        if (isset($this->fieldMappings[$fieldName]) ||
+            isset($this->associationMappings[$fieldName]) ||
+            isset($this->embeddedClasses[$fieldName])) {
+
+            throw MappingException::duplicateFieldMapping($this->name, $fieldName);
+        }
+    }
+
+    /**
+     * Gets the sequence name based on class metadata.
+     *
+     * @param AbstractPlatform $platform
+     * @return string
+     *
+     * @todo Sequence names should be computed in DBAL depending on the platform
+     */
+    public function getSequenceName(AbstractPlatform $platform)
+    {
+        $sequencePrefix = $this->getSequencePrefix($platform);
+
+        $columnName   = $this->getSingleIdentifierColumnName();
+        $sequenceName = $sequencePrefix . '_' . $columnName . '_seq';
+
+        return $sequenceName;
+    }
+
+    /**
+     * Gets the sequence name prefix based on class metadata.
+     *
+     * @param AbstractPlatform $platform
+     * @return string
+     *
+     * @todo Sequence names should be computed in DBAL depending on the platform
+     */
+    public function getSequencePrefix(AbstractPlatform $platform)
+    {
+        $tableName      = $this->getTableName();
+        $sequencePrefix = $tableName;
+
+        // Prepend the schema name to the table name if there is one
+        if ($schemaName = $this->getSchemaName()) {
+            $sequencePrefix = $schemaName . '.' . $tableName;
+
+            if ( ! $platform->supportsSchemas() && $platform->canEmulateSchemas()) {
+                $sequencePrefix = $schemaName . '__' . $tableName;
+            }
+        }
+
+        return $sequencePrefix;
     }
 }

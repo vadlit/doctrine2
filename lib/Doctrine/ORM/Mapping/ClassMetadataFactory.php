@@ -421,11 +421,14 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
                 $sequenceName = null;
                 $fieldName    = $class->identifier ? $class->getSingleIdentifierFieldName() : null;
 
-                if ($this->targetPlatform instanceof Platforms\PostgreSQLPlatform) {
-                    $columnName     = $class->getSingleIdentifierColumnName();
-                    $quoted         = isset($class->fieldMappings[$fieldName]['quoted']) || isset($class->table['quoted']);
-                    $sequenceName   = $class->getTableName() . '_' . $columnName . '_seq';
-                    $definition     = array(
+                // Platforms that do not have native IDENTITY support need a sequence to emulate this behaviour.
+                if ($this->targetPlatform->usesSequenceEmulatedIdentityColumns()) {
+                    $columnName       = $class->getSingleIdentifierColumnName();
+                    $quoted           = isset($class->fieldMappings[$fieldName]['quoted']) || isset($class->table['quoted']);
+                    $sequencePrefix   = $class->getSequencePrefix($this->targetPlatform);
+
+                    $sequenceName = $this->targetPlatform->getIdentitySequenceName($sequencePrefix, $columnName);
+                    $definition   = array(
                         'sequenceName' => $this->targetPlatform->fixSchemaElementName($sequenceName)
                     );
 
@@ -450,10 +453,10 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
 
                 if ( ! $definition) {
                     $fieldName      = $class->getSingleIdentifierFieldName();
-                    $columnName     = $class->getSingleIdentifierColumnName();
+                    $sequenceName   = $class->getSequenceName($this->targetPlatform);
                     $quoted         = isset($class->fieldMappings[$fieldName]['quoted']) || isset($class->table['quoted']);
-                    $sequenceName   = $class->getTableName() . '_' . $columnName . '_seq';
-                    $definition     = array(
+
+                    $definition = array(
                         'sequenceName'      => $this->targetPlatform->fixSchemaElementName($sequenceName),
                         'allocationSize'    => 1,
                         'initialValue'      => 1,
