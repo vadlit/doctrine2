@@ -92,11 +92,6 @@ class YamlDriver extends FileDriver
             $table['name'] = $tableName;
         }
 
-        // Evaluate second level cache
-        if (isset($element['cache'])) {
-            $metadata->enableCache($this->cacheToArray($element['cache']));
-        }
-
         $metadata->setPrimaryTable($table);
 
         // Evaluate named queries

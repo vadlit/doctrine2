@@ -421,13 +421,12 @@ class ClassMetadataFactory extends AbstractClassMetadataFactory
                 $sequenceName = null;
                 $fieldName    = $class->identifier ? $class->getSingleIdentifierFieldName() : null;
 
-                // Platforms that do not have native IDENTITY support need a sequence to emulate this behaviour.
-                if ($this->targetPlatform->usesSequenceEmulatedIdentityColumns()) {
+                if ($this->targetPlatform instanceof Platforms\PostgreSQLPlatform) {
                     $columnName       = $class->getSingleIdentifierColumnName();
                     $quoted           = isset($class->fieldMappings[$fieldName]['quoted']) || isset($class->table['quoted']);
                     $sequencePrefix   = $class->getSequencePrefix($this->targetPlatform);
 
-                    $sequenceName = $this->targetPlatform->getIdentitySequenceName($sequencePrefix, $columnName);
+                    $sequenceName   = $sequencePrefix . '_' . $columnName . '_seq';
                     $definition   = array(
                         'sequenceName' => $this->targetPlatform->fixSchemaElementName($sequenceName)
                     );
