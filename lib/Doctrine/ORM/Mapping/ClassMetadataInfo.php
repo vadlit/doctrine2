@@ -2789,7 +2789,18 @@ class ClassMetadataInfo implements ClassMetadata
      */
     public function getQuotedTableName($platform)
     {
-        return isset($this->table['quoted']) ? $platform->quoteIdentifier($this->table['name']) : $this->table['name'];
+        $tableName = $this->table['name'];
+
+        if ( ! empty($this->table['schema'])) {
+            $tableName = $this->table['schema'] . '.' . $this->table['name'];
+
+            if ( ! $platform->supportsSchemas() && $platform->canEmulateSchemas()) {
+                $tableName = $this->table['schema'] . '__' . $this->table['name'];
+            }
+        }
+        return isset($this->table['quoted'])
+            ? $platform->quoteIdentifier($tableName)
+            : $tableName;
     }
 
     /**
